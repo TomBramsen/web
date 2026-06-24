@@ -1,0 +1,11 @@
+# Hemmeligheder – commit ALDRIG denne fil
+pusher/config.yaml
+
+# Eloverblik cache (genopbygges automatisk)
+pusher/.eloverblik_cache.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

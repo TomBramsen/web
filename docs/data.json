@@ -1,0 +1,14 @@
+{
+  "updated": "2026-06-24T10:30:00+02:00",
+  "power_now_w": 847.0,
+  "lights_on": 2,
+  "devices": [
+    {"name": "Stue loft", "on": true, "brightness": 75, "power_w": 45.0},
+    {"name": "Soveværelse", "on": true, "brightness": 40, "power_w": 22.0},
+    {"name": "Køkken", "on": false, "power_w": 0.0},
+    {"name": "Entre", "on": false, "brightness": 0, "power_w": 0.0}
+  ],
+  "yesterday_kwh": 12.4,
+  "month_kwh": 198.7,
+  "month_name": "Juni"
+}
