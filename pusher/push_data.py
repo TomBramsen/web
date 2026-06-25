@@ -110,7 +110,8 @@ def _sum_kwh(response: dict) -> float:
 
 
 def _parse_hourly(response: dict) -> dict:
-    """Parse Hour-aggregated Eloverblik response → {day_str: {hour: kwh}}"""
+    """Parse Hour eller Quarter Eloverblik response → {day_str: {hour: kwh}}
+    Kvarter-værdier summeres til timer (spotpris er pr. time)."""
     hourly: dict = {}
     for result in response.get("result", []):
         for ts in result.get("MyEnergyData_MarketDocument", {}).get("TimeSeries", []):
@@ -118,11 +119,15 @@ def _parse_hourly(response: dict) -> dict:
                 start_utc = datetime.fromisoformat(
                     period["timeInterval"]["start"].replace("Z", "+00:00")
                 )
+                # PT15M = kvarter, PT1H = time
+                mins = 15 if period.get("resolution", "PT1H") == "PT15M" else 60
                 for point in period.get("Point", []):
                     pos = int(point["position"])
                     kwh = float(point.get("out_Quantity.quantity", 0))
-                    local = (start_utc + timedelta(hours=pos - 1)).astimezone(TZ)
-                    hourly.setdefault(local.date().isoformat(), {})[local.hour] = kwh
+                    local = (start_utc + timedelta(minutes=(pos - 1) * mins)).astimezone(TZ)
+                    day_str = local.date().isoformat()
+                    hour = local.hour
+                    hourly.setdefault(day_str, {})[hour] = hourly.get(day_str, {}).get(hour, 0.0) + kwh
     return hourly
 
 
@@ -198,7 +203,7 @@ def get_history(eloverblik_cfg: dict, price_area: str, tariffs: dict) -> list:
         token = _data_token(eloverblik_cfg["token"])
         mp = eloverblik_cfg["metering_point"]
 
-        hourly = _parse_hourly(_fetch_timeseries(token, mp, date_from, today_str, "Hour"))
+        hourly = _parse_hourly(_fetch_timeseries(token, mp, date_from, today_str, "Quarter"))
         spot   = fetch_spot_prices(date_from, today_str, price_area)
 
         moms  = 1 + tariffs.get("moms", 0.25)
