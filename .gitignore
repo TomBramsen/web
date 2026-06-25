@@ -1,8 +1,13 @@
 # Hemmeligheder – commit ALDRIG denne fil
 pusher/config.yaml
 
-# Eloverblik cache (genopbygges automatisk)
+# Cache-filer (genopbygges automatisk)
 pusher/.eloverblik_cache.json
+pusher/.daily_cache.json
+pusher/.history_cache.json
+
+# macOS
+.DS_Store
 
 # Python
 __pycache__/
