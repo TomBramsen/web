@@ -6,8 +6,8 @@
     {"name": "Stue loft", "on": true, "brightness": 75, "power_w": 45.0},
     {"name": "Soveværelse", "on": true, "brightness": 40, "power_w": 22.0},
     {"name": "Køkken", "on": false, "power_w": 0.0},
-    {"name": "Entre", "on": false, "brightness": 0, "power_w": 0.0}
-    {"name": "Usw", "on": false, "power_w": 0.0},
+    {"name": "Entre", "on": false, "brightness": 0, "power_w": 0.0},
+    {"name": "Ude", "on": false, "power_w": 0.0},
     {"name": "Spisestue", "on": false, "brightness": 100, "power_w": 40.0}
   ],
   "yesterday_kwh": 12.4,
