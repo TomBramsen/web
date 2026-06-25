@@ -19,6 +19,7 @@ CONFIG_FILE = Path(__file__).parent / "config.yaml"
 DAILY_CACHE = Path(__file__).parent / ".daily_cache.json"
 HISTORY_CACHE = Path(__file__).parent / ".history_cache.json"
 HT_CACHE = Path(__file__).parent / ".ht_cache.json"
+POWER_LOG = Path(__file__).parent / ".power_log.json"
 HT_CLOUD_TTL_MIN = 10  # hent fra cloud højst hvert 10. minut
 
 MONTH_NAMES = ["Januar","Februar","Marts","April","Maj","Juni",
@@ -352,6 +353,39 @@ def poll_ht_sensors(sensors_cfg: list, cloud_cfg: dict) -> list:
     return results
 
 
+# ── Watt-log (minut-opløsning, én dag) ───────────────────────────────────
+
+def append_power_log(devices: list, total_w: float) -> list:
+    """Gemmer aktuel watt-måling og returnerer dagens log."""
+    now = datetime.now(TZ)
+    today = now.date().isoformat()
+    t_str = now.strftime("%H:%M")
+
+    log = {}
+    if POWER_LOG.exists():
+        try:
+            log = json.loads(POWER_LOG.read_text())
+        except Exception:
+            pass
+
+    # Nulstil ved ny dag
+    if log.get("date") != today:
+        log = {"date": today, "readings": []}
+
+    log["readings"].append({
+        "t": t_str,
+        "w": total_w,
+        "d": {d["name"]: round(d["power_w"], 1) for d in devices},
+    })
+
+    # Behold max 1440 punkter (24t × 60min)
+    if len(log["readings"]) > 1440:
+        log["readings"] = log["readings"][-1440:]
+
+    POWER_LOG.write_text(json.dumps(log))
+    return log["readings"]
+
+
 # ── GitHub Gist ──────────────────────────────────────────────────────────
 
 def push_to_gist(cfg: dict, data: dict):
@@ -380,6 +414,7 @@ def main():
     daily      = get_daily_totals(cfg["eloverblik"])
     history    = get_history(cfg["eloverblik"], cfg.get("price_area", "DK1"), cfg.get("tariffs", {}))
     sensors    = poll_ht_sensors(cfg.get("ht_sensors", []), cfg.get("shelly_cloud", {}))
+    power_log  = append_power_log(devices, total_w)
 
     now = datetime.now(TZ)
     push_to_gist(cfg["github"], {
@@ -392,6 +427,7 @@ def main():
         "month_name":    MONTH_NAMES[now.month - 1],
         "history":       history,
         "sensors":       sensors,
+        "power_log":     power_log,
     })
 
 

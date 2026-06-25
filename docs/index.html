@@ -151,6 +151,28 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Watt-graf ─────────────────────────────────── */
+    .chart-wrap {
+      position: relative;
+      height: 120px;
+    }
+    .chart-svg { width: 100%; height: 100%; overflow: visible; }
+    .chart-line { fill: none; stroke: var(--accent); stroke-width: 1.5px; }
+    .chart-area { fill: url(#chartGrad); }
+    .chart-xlabels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+      font-size: .65rem;
+      color: var(--muted);
+    }
+    .chart-now-label {
+      font-size: .7rem;
+      color: var(--accent);
+      text-align: right;
+      margin-bottom: .3rem;
+    }
+
     /* ── Tabs ──────────────────────────────────────── */
     .tabs {
       display: flex;
@@ -257,6 +279,25 @@
           <span class="stat-label" id="month-label">Denne måned</span>
           <span><span class="stat-value" id="month">–</span><span class="stat-unit">kWh</span></span>
         </div>
+      </div>
+
+      <!-- Watt-graf over dagen -->
+      <div class="card" id="power-chart-card" style="display:none">
+        <div class="card-label">Forbrug i dag</div>
+        <div class="chart-now-label" id="chart-now-label"></div>
+        <div class="chart-wrap">
+          <svg class="chart-svg" id="chart-svg" viewBox="0 0 400 120" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+                <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.02"/>
+              </linearGradient>
+            </defs>
+            <path class="chart-area" id="chart-area" d=""/>
+            <path class="chart-line" id="chart-line" d=""/>
+          </svg>
+        </div>
+        <div class="chart-xlabels" id="chart-xlabels"></div>
       </div>
 
       <!-- 7-dages søjlediagram -->
@@ -397,6 +438,38 @@
       }).join('');
     }
 
+    // ── Watt-graf ────────────────────────────────────────────────────────
+
+    function renderPowerChart(readings) {
+      if (!readings || readings.length < 2) return;
+      document.getElementById('power-chart-card').style.display = 'block';
+
+      const W = 400, H = 120, PAD = 4;
+      const vals = readings.map(r => r.w);
+      const maxW = Math.max(...vals, 10);
+
+      // Linje + area
+      const pts = readings.map((r, i) => {
+        const x = (i / (readings.length - 1)) * W;
+        const y = PAD + (1 - r.w / maxW) * (H - PAD * 2);
+        return [x, y];
+      });
+      const linePts = pts.map(([x,y], i) => `${i===0?'M':'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+      const areaPts = linePts + ` L${W},${H} L0,${H} Z`;
+
+      document.getElementById('chart-line').setAttribute('d', linePts);
+      document.getElementById('chart-area').setAttribute('d', areaPts);
+
+      // Max-label
+      const last = readings[readings.length - 1];
+      document.getElementById('chart-now-label').textContent =
+        `Nu: ${last.w >= 1000 ? (last.w/1000).toFixed(1)+'kW' : Math.round(last.w)+'W'}  ·  max i dag: ${maxW >= 1000 ? (maxW/1000).toFixed(1)+'kW' : Math.round(maxW)+'W'}`;
+
+      // X-akse labels: hvert 4. time
+      const labels = ['00:00','04:00','08:00','12:00','16:00','20:00','24:00'];
+      document.getElementById('chart-xlabels').innerHTML = labels.map(l => `<span>${l}</span>`).join('');
+    }
+
     // ── Tab-skift ────────────────────────────────────────────────────────
 
     window.switchTab = function(id) {
@@ -453,6 +526,7 @@
         renderRealtime(data);
         if (data.history) renderHistory(data.history);
         if (data.sensors) renderSensors(data.sensors);
+        if (data.power_log) renderPowerChart(data.power_log);
         document.getElementById('error-banner').style.display = 'none';
       } catch (e) {
         console.warn('Fetch fejl:', e);
