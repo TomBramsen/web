@@ -18,6 +18,8 @@ TZ = ZoneInfo("Europe/Copenhagen")
 CONFIG_FILE = Path(__file__).parent / "config.yaml"
 DAILY_CACHE = Path(__file__).parent / ".daily_cache.json"
 HISTORY_CACHE = Path(__file__).parent / ".history_cache.json"
+HT_CACHE = Path(__file__).parent / ".ht_cache.json"
+HT_CLOUD_TTL_MIN = 10  # hent fra cloud højst hvert 10. minut
 
 MONTH_NAMES = ["Januar","Februar","Marts","April","Maj","Juni",
                "Juli","August","September","Oktober","November","December"]
@@ -48,12 +50,20 @@ def _poll_gen1(device: dict) -> dict:
 
 def _poll_gen2(device: dict) -> dict:
     out = {"name": device["name"], "power_w": 0.0, "on": False}
+    dtype = device["type"].lower()
     if device["type"] == "dimmer":
         r = requests.get(f"http://{device['ip']}/rpc/Light.GetStatus?id=0", timeout=5)
         r.raise_for_status()
         d = r.json()
         out["on"] = bool(d["output"])
         out["brightness"] = d.get("brightness", 100)
+        out["power_w"] = float(d.get("apower", 0.0))
+    elif "pm mini" in dtype or dtype == "pm":
+        # Shelly PM Mini Gen 3 — kun måler, intet relæ
+        r = requests.get(f"http://{device['ip']}/rpc/PM1.GetStatus?id=0", timeout=5)
+        r.raise_for_status()
+        d = r.json()
+        out["on"] = True
         out["power_w"] = float(d.get("apower", 0.0))
     else:
         r = requests.get(f"http://{device['ip']}/rpc/Switch.GetStatus?id=0", timeout=5)
@@ -252,6 +262,96 @@ def get_history(eloverblik_cfg: dict, price_area: str, tariffs: dict) -> list:
         return []
 
 
+# ── Shelly H&T sensorer via Cloud API (auto-opdagelse) ───────────────────
+
+def _parse_device_temp(dev: dict):
+    """Returnerer {temp_c, humidity, battery} hvis enheden er en temp-sensor."""
+    # Gen 1 WiFi H&T: bruger 'tmp' + 'hum'
+    if "tmp" in dev and "hum" in dev:
+        return {
+            "temp_c":   round(dev["tmp"]["tC"], 1),
+            "humidity": round(dev["hum"]["value"], 1),
+            "battery":  dev.get("bat", {}).get("value"),
+        }
+    # Gen 2+ / BLU H&T: bruger 'temperature:0' + 'humidity:0'
+    if "temperature:0" in dev and "humidity:0" in dev:
+        return {
+            "temp_c":   round(dev["temperature:0"]["tC"], 1),
+            "humidity": round(dev["humidity:0"]["rh"], 1),
+            "battery":  dev.get("devicepower:0", {}).get("battery", {}).get("percent"),
+        }
+    return None
+
+
+def poll_ht_sensors(sensors_cfg: list, cloud_cfg: dict) -> list:
+    """Henter alle H&T data fra Shelly Cloud i ét kald. Cache i 10 minutter."""
+    cache = {}
+    if HT_CACHE.exists():
+        try:
+            cache = json.loads(HT_CACHE.read_text())
+        except Exception:
+            pass
+
+    now = datetime.now(TZ)
+    name_map = {s["cloud_id"]: s["name"] for s in sensors_cfg if s.get("cloud_id")}
+
+    # Check om cache er frisk nok
+    cache_age_min = None
+    if cache.get("_fetched"):
+        cache_age_min = (now - datetime.fromisoformat(cache["_fetched"])).total_seconds() / 60
+
+    if cache_age_min is None or cache_age_min >= HT_CLOUD_TTL_MIN:
+        try:
+            r = requests.get(
+                f"{cloud_cfg['server']}/device/all_status",
+                params={"auth_key": cloud_cfg["auth_key"]},
+                timeout=15,
+            )
+            r.raise_for_status()
+            body = r.json()
+            if not body.get("isok"):
+                raise ValueError(body.get("errors"))
+            devices = body["data"]["devices_status"]
+
+            fresh: dict = {"_fetched": now.isoformat()}
+            for dev_id, dev in devices.items():
+                parsed = _parse_device_temp(dev)
+                if parsed:
+                    sensor_updated = dev.get("_updated") or now.isoformat()
+                    fresh[dev_id] = {**parsed, "updated": sensor_updated}
+
+            cache = fresh
+            HT_CACHE.write_text(json.dumps(cache))
+            LOG.info("H&T cloud: %d sensorer opdateret", len(fresh) - 1)
+        except Exception as exc:
+            LOG.warning("H&T cloud: %s — bruger cache", exc)
+
+    results = []
+    for dev_id, entry in cache.items():
+        if dev_id == "_fetched":
+            continue
+        name = name_map.get(dev_id, dev_id)
+        age_min = None
+        if entry.get("updated"):
+            try:
+                age_min = (now - datetime.fromisoformat(entry["updated"].replace(" ", "T"))).total_seconds() / 60
+            except Exception:
+                pass
+        results.append({
+            "id":       dev_id,
+            "name":     name,
+            "temp_c":   entry.get("temp_c"),
+            "humidity": entry.get("humidity"),
+            "battery":  entry.get("battery"),
+            "updated":  entry.get("updated"),
+            "stale":    age_min is not None and age_min > 60,
+        })
+        LOG.info("H&T %s: %.1f°C", name, entry.get("temp_c", 0))
+
+    results.sort(key=lambda x: x["name"])
+    return results
+
+
 # ── GitHub Gist ──────────────────────────────────────────────────────────
 
 def push_to_gist(cfg: dict, data: dict):
@@ -279,6 +379,7 @@ def main():
     lights_on  = sum(1 for d in devices if d.get("on"))
     daily      = get_daily_totals(cfg["eloverblik"])
     history    = get_history(cfg["eloverblik"], cfg.get("price_area", "DK1"), cfg.get("tariffs", {}))
+    sensors    = poll_ht_sensors(cfg.get("ht_sensors", []), cfg.get("shelly_cloud", {}))
 
     now = datetime.now(TZ)
     push_to_gist(cfg["github"], {
@@ -290,6 +391,7 @@ def main():
         "month_kwh":     daily["month_kwh"],
         "month_name":    MONTH_NAMES[now.month - 1],
         "history":       history,
+        "sensors":       sensors,
     })
 
 

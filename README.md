@@ -70,19 +70,17 @@ shelly_devices:
 
 > **Vigtigt:** `config.yaml` er i `.gitignore` og committes aldrig — den indeholder tokens.
 
-### 4. Installer Python-miljø (én gang)
+### 4. Installer afhængigheder (én gang)
 
 ```bash
-cd ~/energi-dashboard/pusher
-python3 -m venv .venv
-.venv/bin/pip install requests pyyaml
+cd pusher
+pip3 install -r requirements.txt
 ```
 
 ### 5. Test scriptet
 
 ```bash
-cd ~/energi-dashboard/pusher
-.venv/bin/python3 push_data.py
+python3 push_data.py
 ```
 
 Du bør se noget lignende:
@@ -100,7 +98,7 @@ crontab -e
 
 Tilføj linjen:
 ```
-* * * * * cd ~/energi-dashboard/pusher && .venv/bin/python3 push_data.py >> /tmp/energi.log 2>&1
+* * * * * cd /Users/tombramsen/web/web/pusher && python3 push_data.py >> /tmp/energi.log 2>&1
 ```
 
 ### 7. GitHub Pages
