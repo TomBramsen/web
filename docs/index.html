@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Energi Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f172a;
+      --card:    #1e293b;
+      --border:  #334155;
+      --text:    #f1f5f9;
+      --muted:   #94a3b8;
+      --on:      #22c55e;
+      --off:     #475569;
+      --accent:  #3b82f6;
+      --warn:    #f59e0b;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+      padding: 1.5rem 1rem 3rem;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 1.5rem;
+    }
+    .header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
+    .meta { font-size: .75rem; color: var(--muted); text-align: right; line-height: 1.6; }
+    .meta .countdown { color: var(--accent); }
+
+    .grid { display: flex; flex-direction: column; gap: 1rem; max-width: 480px; margin: 0 auto; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: .75rem;
+      padding: 1.25rem 1.5rem;
+    }
+    .card-label {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: .75rem;
+    }
+
+    /* ── Forbrug nu ────────────────────────────────── */
+    .power-value { font-size: 3rem; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+    .power-unit  { font-size: 1.2rem; font-weight: 400; color: var(--muted); margin-left: .2rem; }
+
+    /* ── Lys ───────────────────────────────────────── */
+    .device-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+    .device { display: flex; align-items: center; gap: .75rem; font-size: .9rem; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--off); }
+    .dot.on { background: var(--on); box-shadow: 0 0 6px var(--on); }
+    .device-name { flex: 1; }
+    .device-brightness, .device-power { font-size: .75rem; color: var(--muted); width: 3rem; text-align: right; }
+    .device.off .device-name { color: var(--off); }
+
+    /* ── Energi totaler ────────────────────────────── */
+    .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: .3rem 0; }
+    .stat-row + .stat-row { border-top: 1px solid var(--border); margin-top: .4rem; padding-top: .7rem; }
+    .stat-label { font-size: .85rem; color: var(--muted); }
+    .stat-value { font-size: 1.5rem; font-weight: 600; }
+    .stat-unit  { font-size: .85rem; color: var(--muted); margin-left: .2rem; }
+
+    /* ── 7-dages søjlediagram ──────────────────────── */
+    .bars-row {
+      display: flex;
+      gap: 5px;
+      align-items: flex-start;
+    }
+    .bar-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      border-radius: 4px;
+      padding: 2px 0 4px;
+      transition: background .15s;
+    }
+    .bar-col:hover { background: rgba(255,255,255,.04); }
+    .bar-col.active { background: rgba(34,197,94,.07); }
+    .bar-cost { font-size: .58rem; color: var(--accent); height: 14px; line-height: 14px; }
+    .bar-col.active .bar-cost { color: var(--on); }
+    .bar-area {
+      height: 70px;
+      display: flex;
+      align-items: flex-end;
+      width: 100%;
+      padding: 0 2px;
+    }
+    .bar {
+      width: 100%;
+      border-radius: 3px 3px 0 0;
+      background: var(--accent);
+      min-height: 2px;
+      transition: background .15s;
+    }
+    .bar-col.active .bar { background: var(--on); }
+    .bar-col:hover .bar  { opacity: .85; }
+    .bar-kwh { font-size: .58rem; color: var(--muted); margin-top: 4px; }
+    .bar-day { font-size: .65rem; color: var(--muted); font-weight: 500; }
+    .bar-col.active .bar-day { color: var(--on); }
+
+    /* ── Timevisning ───────────────────────────────── */
+    #hours-section { display: none; }
+    .hour-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .hour-table th {
+      color: var(--muted); font-weight: 600; font-size: .65rem;
+      letter-spacing: .07em; text-transform: uppercase;
+      padding: 0 0 6px; text-align: right;
+    }
+    .hour-table th:first-child { text-align: left; }
+    .hour-table td {
+      padding: 4px 0; border-top: 1px solid var(--border);
+      text-align: right; color: var(--muted);
+    }
+    .hour-table td:first-child { text-align: left; }
+    .hour-table tr.has-data td { color: var(--text); }
+    .hour-table tr.has-data td:first-child { color: var(--muted); }
+    .hours-scroll { max-height: 340px; overflow-y: auto; }
+    /* scrollbar */
+    .hours-scroll::-webkit-scrollbar { width: 4px; }
+    .hours-scroll::-webkit-scrollbar-track { background: transparent; }
+    .hours-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Error banner ──────────────────────────────── */
+    .error-banner {
+      background: #7f1d1d; border: 1px solid #dc2626;
+      border-radius: .5rem; padding: .75rem 1rem;
+      font-size: .85rem; margin-bottom: 1rem; display: none;
+    }
+
+    .spinner {
+      display: inline-block; width: 10px; height: 10px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .8s linear infinite;
+      margin-left: .4rem; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div style="max-width:480px;margin:0 auto">
+    <div class="header">
+      <h1>⚡ Energi</h1>
+      <div class="meta">
+        <div id="updated">–</div>
+        <div>Opdaterer om <span class="countdown" id="countdown">60</span>s
+          <span id="spinner" class="spinner"></span></div>
+      </div>
+    </div>
+
+    <div id="error-banner" class="error-banner">Kunne ikke hente data – viser seneste kendte værdier.</div>
+
+    <div class="grid">
+
+      <div class="card">
+        <div class="card-label">Forbrug nu</div>
+        <div class="power-value" id="power">–<span class="power-unit">W</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Lys · <span id="lights-on-count">–</span> tændt</div>
+        <ul class="device-list" id="device-list">
+          <li style="color:var(--muted);font-size:.85rem">Indlæser…</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Energiforbrug</div>
+        <div class="stat-row">
+          <span class="stat-label">I går</span>
+          <span><span class="stat-value" id="yesterday">–</span><span class="stat-unit">kWh</span></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label" id="month-label">Denne måned</span>
+          <span><span class="stat-value" id="month">–</span><span class="stat-unit">kWh</span></span>
+        </div>
+      </div>
+
+      <!-- 7-dages søjlediagram -->
+      <div class="card" id="history-card" style="display:none">
+        <div class="card-label">7 dage — klik for timer</div>
+        <div class="bars-row" id="history-bars"></div>
+      </div>
+
+      <!-- Timevisning (vises ved klik) -->
+      <div class="card" id="hours-section">
+        <div class="card-label">Timer · <span id="hours-date"></span></div>
+        <div class="hours-scroll">
+          <table class="hour-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>kWh</th>
+                <th>Spot</th>
+                <th>Pris</th>
+              </tr>
+            </thead>
+            <tbody id="hours-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const GIST_ID = '0ec897136755f24b58d5602c80f247bf';
+    const DATA_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      ? './data.json'
+      : `https://gist.githubusercontent.com/TomBramsen/${GIST_ID}/raw/data.json`;
+    const REFRESH_S = 60;
+
+    let countdown = REFRESH_S;
+    let lastData   = null;
+    let activeDay  = null;
+
+    // ── Formatering ────────────────────────────────────────────────────
+
+    function fmtNum(n, dec = 1) {
+      if (n == null) return '–';
+      return n.toLocaleString('da-DK', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    }
+    function fmtKr(n) {
+      if (n == null || n === 0) return '–';
+      return fmtNum(n, 2) + ' kr';
+    }
+    function fmtPower(w) {
+      if (w == null) return '–<span class="power-unit">W</span>';
+      if (w >= 1000) return `${fmtNum(w / 1000)}<span class="power-unit">kW</span>`;
+      return `${fmtNum(w, 0)}<span class="power-unit">W</span>`;
+    }
+    function fmtTime(iso) {
+      if (!iso) return '–';
+      return new Date(iso).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    // ── Render: realtime ────────────────────────────────────────────────
+
+    function renderRealtime(data) {
+      document.getElementById('updated').textContent = `Opdateret ${fmtTime(data.updated)}`;
+      document.getElementById('power').innerHTML = fmtPower(data.power_now_w);
+      document.getElementById('lights-on-count').textContent = data.lights_on ?? '–';
+      document.getElementById('yesterday').textContent = fmtNum(data.yesterday_kwh);
+      document.getElementById('month').textContent = fmtNum(data.month_kwh);
+      if (data.month_name) document.getElementById('month-label').textContent = data.month_name;
+
+      const devices = data.devices ?? [];
+      const sorted = [...devices].sort((a, b) =>
+        (b.on ? 1 : 0) - (a.on ? 1 : 0) || a.name.localeCompare(b.name, 'da'));
+
+      document.getElementById('device-list').innerHTML = sorted.map(d => `
+        <li class="device ${d.on ? 'on' : 'off'}">
+          <span class="dot ${d.on ? 'on' : ''}"></span>
+          <span class="device-name">${d.name}${d.error ? ' ⚠' : ''}</span>
+          ${d.brightness != null ? `<span class="device-brightness">${d.on ? d.brightness + '%' : ''}</span>` : '<span class="device-brightness"></span>'}
+          <span class="device-power">${d.power_w > 0.5 ? fmtNum(d.power_w, 0) + 'W' : ''}</span>
+        </li>`).join('');
+    }
+
+    // ── Render: 7-dages chart ───────────────────────────────────────────
+
+    function renderHistory(history) {
+      if (!history || history.length === 0) return;
+      document.getElementById('history-card').style.display = 'block';
+
+      const maxKwh = Math.max(...history.map(d => d.kwh), 0.1);
+      const BAR_MAX_PX = 70;
+
+      document.getElementById('history-bars').innerHTML = history.map(day => {
+        const h = Math.max(Math.round(day.kwh / maxKwh * BAR_MAX_PX), 2);
+        const active = activeDay === day.date ? 'active' : '';
+        return `
+          <div class="bar-col ${active}" onclick="selectDay('${day.date}')">
+            <span class="bar-cost">${day.cost_dkk > 0 ? Math.round(day.cost_dkk) + 'kr' : ''}</span>
+            <div class="bar-area"><div class="bar" style="height:${h}px"></div></div>
+            <span class="bar-kwh">${fmtNum(day.kwh)}kWh</span>
+            <span class="bar-day">${day.day_name}</span>
+          </div>`;
+      }).join('');
+
+      if (activeDay) {
+        const day = history.find(d => d.date === activeDay);
+        if (day) renderHours(day);
+      }
+    }
+
+    // ── Render: timevisning ─────────────────────────────────────────────
+
+    function renderHours(day) {
+      const sec = document.getElementById('hours-section');
+      sec.style.display = 'block';
+
+      const label = new Date(day.date + 'T12:00').toLocaleDateString('da-DK', {
+        weekday: 'long', day: 'numeric', month: 'long'
+      });
+      document.getElementById('hours-date').textContent = label;
+
+      const dayCost = fmtKr(day.cost_dkk);
+      document.getElementById('hours-body').innerHTML = day.hours.map(h => {
+        const cls = h.kwh > 0.001 ? 'has-data' : '';
+        return `<tr class="${cls}">
+          <td>${String(h.hour).padStart(2, '0')}:00</td>
+          <td>${fmtNum(h.kwh, 3)}</td>
+          <td>${h.spot_ore > 0 ? Math.round(h.spot_ore) + 'ø' : '–'}</td>
+          <td>${h.cost_dkk > 0 ? fmtNum(h.cost_dkk, 2) + ' kr' : '–'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // ── Dagsvælger ──────────────────────────────────────────────────────
+
+    window.selectDay = function(dateStr) {
+      if (activeDay === dateStr) {
+        activeDay = null;
+        document.getElementById('hours-section').style.display = 'none';
+      } else {
+        activeDay = dateStr;
+      }
+      if (lastData?.history) renderHistory(lastData.history);
+    };
+
+    // ── Data fetch ──────────────────────────────────────────────────────
+
+    async function fetchData() {
+      document.getElementById('spinner').style.display = 'inline-block';
+      try {
+        const r = await fetch(`${DATA_URL}?t=${Date.now()}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        lastData = data;
+        renderRealtime(data);
+        if (data.history) renderHistory(data.history);
+        document.getElementById('error-banner').style.display = 'none';
+      } catch (e) {
+        console.warn('Fetch fejl:', e);
+        document.getElementById('error-banner').style.display = 'block';
+        if (lastData) { renderRealtime(lastData); if (lastData.history) renderHistory(lastData.history); }
+      } finally {
+        document.getElementById('spinner').style.display = 'none';
+      }
+    }
+
+    setInterval(() => {
+      if (--countdown <= 0) { countdown = REFRESH_S; fetchData(); }
+      document.getElementById('countdown').textContent = countdown;
+    }, 1000);
+
+    fetchData();
+  </script>
+</body>
+</html>
