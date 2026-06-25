@@ -178,9 +178,12 @@ def fetch_spot_prices(date_from: str, date_to: str, price_area: str) -> dict:
         timeout=15,
     )
     r.raise_for_status()
+    records = r.json().get("records", [])
+    if records:
+        LOG.info("Spot nøgle eksempel: %r", records[0].get("HourDK", "")[:16])
     return {
         rec["HourDK"][:16].replace(" ", "T"): round(rec["SpotPriceDKK"] / 1000.0, 5)
-        for rec in r.json().get("records", [])
+        for rec in records
         if rec.get("SpotPriceDKK") is not None
     }
 
