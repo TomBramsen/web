@@ -269,8 +269,8 @@
     <!-- ── Energi-fane ── -->
     <div id="tab-energi" class="tab-panel active">
 
-      <div class="card">
-        <div class="card-label">Forbrug nu</div>
+      <div class="card" onclick="selectDevice(null)" style="cursor:pointer">
+        <div class="card-label">Forbrug nu — klik for graf</div>
         <div class="power-value" id="power">–<span class="power-unit">W</span></div>
       </div>
 
@@ -489,7 +489,7 @@
     // ── Enhedsvælger ─────────────────────────────────────────────────────
 
     window.selectDevice = function(name) {
-      activeDevice = activeDevice === name ? null : name;
+      activeDevice = (name === null || activeDevice === name) ? null : name;
       if (lastData?.devices) renderRealtime(lastData);
       if (lastData?.power_log) renderPowerChart(lastData.power_log, activeDevice);
     };
