@@ -66,6 +66,7 @@
     .device-name { flex: 1; }
     .device-brightness, .device-power { font-size: .75rem; color: var(--muted); width: 3rem; text-align: right; }
     .device.off .device-name { color: var(--off); }
+    .device.selected { background: rgba(59,130,246,.1); border-radius: .4rem; padding: .1rem .3rem; margin: 0 -.3rem; }
 
     /* ── Energi totaler ────────────────────────────── */
     .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: .3rem 0; }
@@ -341,9 +342,10 @@
       : `https://gist.githubusercontent.com/TomBramsen/${GIST_ID}/raw/data.json`;
     const REFRESH_S = 60;
 
-    let countdown = REFRESH_S;
-    let lastData   = null;
-    let activeDay  = null;
+    let countdown      = REFRESH_S;
+    let lastData       = null;
+    let activeDay      = null;
+    let activeDevice   = null;  // null = total forbrug
 
     // ── Formatering ────────────────────────────────────────────────────
 
@@ -380,7 +382,8 @@
         (b.on ? 1 : 0) - (a.on ? 1 : 0) || a.name.localeCompare(b.name, 'da'));
 
       document.getElementById('device-list').innerHTML = sorted.map(d => `
-        <li class="device ${d.on ? 'on' : 'off'}">
+        <li class="device ${d.on ? 'on' : 'off'} ${activeDevice === d.name ? 'selected' : ''}"
+            onclick="selectDevice('${d.name}')" style="cursor:pointer">
           <span class="dot ${d.on ? 'on' : ''}"></span>
           <span class="device-name">${d.name}${d.error ? ' ⚠' : ''}</span>
           ${d.brightness != null ? `<span class="device-brightness">${d.on ? d.brightness + '%' : ''}</span>` : '<span class="device-brightness"></span>'}
@@ -440,18 +443,21 @@
 
     // ── Watt-graf ────────────────────────────────────────────────────────
 
-    function renderPowerChart(readings) {
+    function renderPowerChart(readings, deviceName) {
       if (!readings || readings.length < 2) return;
       document.getElementById('power-chart-card').style.display = 'block';
 
+      const label = deviceName || 'Samlet forbrug';
+      document.getElementById('power-chart-card').querySelector('.card-label').textContent =
+        deviceName ? `${deviceName} — i dag` : 'Samlet forbrug i dag';
+
       const W = 400, H = 120, PAD = 4;
-      const vals = readings.map(r => r.w);
+      const vals = readings.map(r => deviceName ? (r.d?.[deviceName] ?? 0) : r.w);
       const maxW = Math.max(...vals, 10);
 
-      // Linje + area
-      const pts = readings.map((r, i) => {
-        const x = (i / (readings.length - 1)) * W;
-        const y = PAD + (1 - r.w / maxW) * (H - PAD * 2);
+      const pts = vals.map((w, i) => {
+        const x = (i / (vals.length - 1)) * W;
+        const y = PAD + (1 - w / maxW) * (H - PAD * 2);
         return [x, y];
       });
       const linePts = pts.map(([x,y], i) => `${i===0?'M':'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
@@ -460,15 +466,22 @@
       document.getElementById('chart-line').setAttribute('d', linePts);
       document.getElementById('chart-area').setAttribute('d', areaPts);
 
-      // Max-label
-      const last = readings[readings.length - 1];
+      const lastW = vals[vals.length - 1];
+      const fmt = w => w >= 1000 ? (w/1000).toFixed(1)+'kW' : Math.round(w)+'W';
       document.getElementById('chart-now-label').textContent =
-        `Nu: ${last.w >= 1000 ? (last.w/1000).toFixed(1)+'kW' : Math.round(last.w)+'W'}  ·  max i dag: ${maxW >= 1000 ? (maxW/1000).toFixed(1)+'kW' : Math.round(maxW)+'W'}`;
+        `Nu: ${fmt(lastW)}  ·  max i dag: ${fmt(maxW)}${deviceName ? '  · klik igen for at nulstille' : ''}`;
 
-      // X-akse labels: hvert 4. time
       const labels = ['00:00','04:00','08:00','12:00','16:00','20:00','24:00'];
       document.getElementById('chart-xlabels').innerHTML = labels.map(l => `<span>${l}</span>`).join('');
     }
+
+    // ── Enhedsvælger ─────────────────────────────────────────────────────
+
+    window.selectDevice = function(name) {
+      activeDevice = activeDevice === name ? null : name;
+      if (lastData?.devices) renderRealtime(lastData);
+      if (lastData?.power_log) renderPowerChart(lastData.power_log, activeDevice);
+    };
 
     // ── Tab-skift ────────────────────────────────────────────────────────
 
@@ -526,7 +539,7 @@
         renderRealtime(data);
         if (data.history) renderHistory(data.history);
         if (data.sensors) renderSensors(data.sensors);
-        if (data.power_log) renderPowerChart(data.power_log);
+        if (data.power_log) renderPowerChart(data.power_log, activeDevice);
         document.getElementById('error-banner').style.display = 'none';
       } catch (e) {
         console.warn('Fetch fejl:', e);

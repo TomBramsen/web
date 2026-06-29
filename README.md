@@ -98,7 +98,19 @@ crontab -e
 
 Tilføj linjen:
 ```
-* * * * * cd /Users/tombramsen/web/web/pusher && python3 push_data.py >> /tmp/energi.log 2>&1
+* * * * * cd /home/tom/web/pusher && python3 push_data.py >> /tmp/energi.log 2>&1
+```
+
+**Tjek at cron kører:**
+```bash
+# Se om cron-tjenesten er aktiv
+systemctl status cron
+
+# Følg log i realtid (opdaterer hvert minut)
+tail -f /tmp/energi.log
+
+# Se seneste cron-kørsler i syslog
+grep CRON /var/log/syslog | tail -20
 ```
 
 ### 7. GitHub Pages
