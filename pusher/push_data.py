@@ -20,6 +20,7 @@ DAILY_CACHE = Path(__file__).parent / ".daily_cache.json"
 HISTORY_CACHE = Path(__file__).parent / ".history_cache.json"
 HT_CACHE = Path(__file__).parent / ".ht_cache.json"
 POWER_LOG = Path(__file__).parent / ".power_log.json"
+HUE_CACHE = Path(__file__).parent / ".hue_cache.json"
 HT_CLOUD_TTL_MIN = 10  # hent fra cloud højst hvert 10. minut
 
 MONTH_NAMES = ["Januar","Februar","Marts","April","Maj","Juni",
@@ -355,6 +356,68 @@ def poll_ht_sensors(sensors_cfg: list, cloud_cfg: dict) -> list:
     return results
 
 
+# ── Philips Hue ──────────────────────────────────────────────────────────
+
+def fetch_hue(cfg: dict) -> list:
+    """Henter rum og lys fra Hue Bridge. Returnerer liste af rum med lys."""
+    ip       = cfg["ip"]
+    username = cfg["username"]
+    grupper  = {int(k): v for k, v in cfg.get("rum_grupper", {}).items()}
+    base     = f"https://{ip}/api/{username}"
+
+    cache = {}
+    if HUE_CACHE.exists():
+        try:
+            cache = json.loads(HUE_CACHE.read_text())
+        except Exception:
+            pass
+
+    try:
+        lights = requests.get(f"{base}/lights", timeout=5, verify=False).json()
+        groups = requests.get(f"{base}/groups", timeout=5, verify=False).json()
+
+        rooms = []
+        for gid_str, g in groups.items():
+            if g.get("type") not in ("Room", "Zone") or g.get("type") == "Zone":
+                continue
+            gid = int(gid_str)
+            gruppe = grupper.get(gid, "Andet")
+            room_lights = []
+            for lid in g.get("lights", []):
+                if lid not in lights:
+                    continue
+                l = lights[lid]
+                s = l["state"]
+                room_lights.append({
+                    "name": l["name"],
+                    "on":   bool(s["on"]),
+                    "bri":  round(s["bri"] / 2.54) if s.get("bri") else None,
+                    "type": l.get("type", ""),
+                })
+            rooms.append({
+                "id":     gid,
+                "name":   g["name"],
+                "gruppe": gruppe,
+                "on":     g["state"].get("any_on", False),
+                "lights": room_lights,
+            })
+
+        rooms.sort(key=lambda r: (
+            ["1. sal","Stue","Kælder","Andet"].index(r["gruppe"])
+            if r["gruppe"] in ["1. sal","Stue","Kælder","Andet"] else 99,
+            r["name"]
+        ))
+
+        cache = {"updated": datetime.now(TZ).isoformat(), "rooms": rooms}
+        HUE_CACHE.write_text(json.dumps(cache, ensure_ascii=False))
+        LOG.info("Hue: %d rum, %d lys", len(rooms), sum(len(r["lights"]) for r in rooms))
+        return rooms
+
+    except Exception as exc:
+        LOG.warning("Hue: %s — bruger cache", exc)
+        return cache.get("rooms", [])
+
+
 # ── Watt-log (minut-opløsning, én dag) ───────────────────────────────────
 
 def append_power_log(devices: list, total_w: float) -> list:
@@ -416,6 +479,7 @@ def main():
     daily      = get_daily_totals(cfg["eloverblik"])
     history    = get_history(cfg["eloverblik"], cfg.get("price_area", "DK1"), cfg.get("tariffs", {}))
     sensors    = poll_ht_sensors(cfg.get("ht_sensors", []), cfg.get("shelly_cloud", {}))
+    hue_rooms  = fetch_hue(cfg["hue"]) if cfg.get("hue") else []
     power_log  = append_power_log(devices, total_w)
 
     now = datetime.now(TZ)
@@ -430,6 +494,7 @@ def main():
         "history":       history,
         "sensors":       sensors,
         "power_log":     power_log,
+        "hue_rooms":     hue_rooms,
     })
 
 

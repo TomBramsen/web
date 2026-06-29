@@ -152,6 +152,34 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Lys ───────────────────────────────────────── */
+    .hue-group-label {
+      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--muted);
+      padding: .5rem 0 .25rem; border-bottom: 1px solid var(--border);
+      margin-bottom: .5rem;
+    }
+    .hue-group-label:first-child { padding-top: 0; }
+    .hue-room {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: .75rem; padding: 1rem 1.25rem; margin-bottom: .75rem;
+    }
+    .hue-room-header {
+      display: flex; align-items: center; gap: .6rem;
+      margin-bottom: .6rem;
+    }
+    .hue-room-name { font-size: .95rem; font-weight: 600; flex: 1; }
+    .hue-room-off .hue-room-name { color: var(--muted); }
+    .hue-light-list { list-style: none; display: flex; flex-direction: column; gap: .35rem; }
+    .hue-light {
+      display: flex; align-items: center; gap: .6rem; font-size: .85rem;
+    }
+    .hue-light .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--off); }
+    .hue-light .dot.on { background: #fbbf24; box-shadow: 0 0 5px #fbbf2488; }
+    .hue-light-name { flex: 1; }
+    .hue-light.off .hue-light-name { color: var(--muted); }
+    .hue-light-bri { font-size: .75rem; color: var(--muted); }
+
     /* ── Watt-graf ─────────────────────────────────── */
     .chart-wrap {
       position: relative;
@@ -263,6 +291,7 @@
 
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('energi')">⚡ Energi</button>
+      <button class="tab-btn" onclick="switchTab('lys')">💡 Lys</button>
       <button class="tab-btn" onclick="switchTab('temp')">🌡 Temperatur</button>
     </div>
 
@@ -336,6 +365,13 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- ── Lys-fane ── -->
+    <div id="tab-lys" class="tab-panel">
+      <div id="hue-rooms">
+        <div style="color:var(--muted);font-size:.85rem">Indlæser…</div>
+      </div>
     </div>
 
     <!-- ── Temperatur-fane ── -->
@@ -498,12 +534,43 @@
 
     window.switchTab = function(id) {
       document.querySelectorAll('.tab-btn').forEach((b, i) => {
-        b.classList.toggle('active', ['energi','temp'][i] === id);
+        b.classList.toggle('active', ['energi','lys','temp'][i] === id);
       });
       document.querySelectorAll('.tab-panel').forEach(p => {
         p.classList.toggle('active', p.id === 'tab-' + id);
       });
     };
+
+    // ── Render: Hue lys ──────────────────────────────────────────────────
+
+    function renderHue(rooms) {
+      if (!rooms || rooms.length === 0) return;
+      const ORDER = ['1. sal','Stue','Kælder','Andet'];
+      let html = '';
+      let lastGruppe = null;
+      rooms.forEach(room => {
+        if (room.gruppe !== lastGruppe) {
+          html += `<div class="hue-group-label">${room.gruppe}</div>`;
+          lastGruppe = room.gruppe;
+        }
+        const offCls = room.on ? '' : 'hue-room-off';
+        const lights = room.lights.map(l => `
+          <li class="hue-light ${l.on ? '' : 'off'}">
+            <span class="dot ${l.on ? 'on' : ''}"></span>
+            <span class="hue-light-name">${l.name}</span>
+            <span class="hue-light-bri">${l.on && l.bri != null ? l.bri + '%' : ''}</span>
+          </li>`).join('');
+        html += `
+          <div class="hue-room ${offCls}">
+            <div class="hue-room-header">
+              <span class="dot ${room.on ? 'on' : ''}"></span>
+              <span class="hue-room-name">${room.name}</span>
+            </div>
+            ${room.lights.length ? `<ul class="hue-light-list">${lights}</ul>` : ''}
+          </div>`;
+      });
+      document.getElementById('hue-rooms').innerHTML = html;
+    }
 
     // ── Render: temperatursensorer ──────────────────────────────────────
 
@@ -569,6 +636,7 @@
         if (data.history) renderHistory(data.history);
         if (data.sensors) renderSensors(data.sensors);
         if (data.power_log) renderPowerChart(data.power_log, activeDevice);
+        if (data.hue_rooms) renderHue(data.hue_rooms);
         document.getElementById('error-banner').style.display = 'none';
       } catch (e) {
         console.warn('Fetch fejl:', e);
