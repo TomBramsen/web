@@ -203,6 +203,17 @@
     .tab-panel.active { display: flex; flex-direction: column; gap: 1rem; }
 
     /* ── Temperatur grid ───────────────────────────── */
+    .sensor-group-label {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: .5rem 0 .25rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: .25rem;
+    }
+    .sensor-group-label:first-child { padding-top: 0; }
     .sensor-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -498,20 +509,38 @@
 
     function renderSensors(sensors) {
       if (!sensors || sensors.length === 0) return;
-      document.getElementById('sensor-grid').innerHTML = sensors.map(s => {
-        const temp = s.temp_c != null ? s.temp_c.toFixed(1) : '–';
-        const hum  = s.humidity != null ? Math.round(s.humidity) + '%' : '–';
-        const age  = s.updated ? (() => {
-          const mins = Math.round((Date.now() - new Date(s.updated)) / 60000);
-          return mins < 60 ? `${mins} min` : `${Math.round(mins/60)}t`;
-        })() : '–';
-        const bat  = s.battery != null ? ` · 🔋${s.battery}%` : '';
-        return `
-          <div class="sensor-card ${s.stale ? 'stale' : ''}">
-            <div class="sensor-name">${s.name}</div>
-            <div class="sensor-temp">${temp}<span class="sensor-unit">°C</span></div>
-            <div class="sensor-hum">💧 ${hum}${bat} · ${age}</div>
-          </div>`;
+
+      const groups = [];
+      const seen = {};
+      sensors.forEach(s => {
+        const g = s.gruppe || '–';
+        if (!seen[g]) { seen[g] = true; groups.push({ label: g, items: [] }); }
+        groups.find(x => x.label === g).items.push(s);
+      });
+
+      const ORDER = ['1. sal', 'Stue', 'Kælder', 'Ude'];
+      groups.sort((a, b) => {
+        const ai = ORDER.indexOf(a.label), bi = ORDER.indexOf(b.label);
+        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+      });
+
+      document.getElementById('sensor-grid').innerHTML = groups.map(g => {
+        const cards = g.items.map(s => {
+          const temp = s.temp_c != null ? s.temp_c.toFixed(1) : '–';
+          const hum  = s.humidity != null ? Math.round(s.humidity) + '%' : '–';
+          const age  = s.updated ? (() => {
+            const mins = Math.round((Date.now() - new Date(s.updated)) / 60000);
+            return mins < 60 ? `${mins} min` : `${Math.round(mins/60)}t`;
+          })() : '–';
+          const bat  = s.battery != null ? ` · 🔋${s.battery}%` : '';
+          return `
+            <div class="sensor-card ${s.stale ? 'stale' : ''}">
+              <div class="sensor-name">${s.name}</div>
+              <div class="sensor-temp">${temp}<span class="sensor-unit">°C</span></div>
+              <div class="sensor-hum">💧 ${hum}${bat} · ${age}</div>
+            </div>`;
+        }).join('');
+        return `<div class="sensor-group-label" style="grid-column:1/-1">${g.label}</div>${cards}`;
       }).join('');
     }
 

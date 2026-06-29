@@ -338,9 +338,11 @@ def poll_ht_sensors(sensors_cfg: list, cloud_cfg: dict) -> list:
                 age_min = (now - datetime.fromisoformat(entry["updated"].replace(" ", "T"))).total_seconds() / 60
             except Exception:
                 pass
+        gruppe = next((s.get("gruppe") for s in sensors_cfg if s.get("cloud_id") == dev_id), None)
         results.append({
             "id":       dev_id,
             "name":     name,
+            "gruppe":   gruppe,
             "temp_c":   entry.get("temp_c"),
             "humidity": entry.get("humidity"),
             "battery":  entry.get("battery"),
